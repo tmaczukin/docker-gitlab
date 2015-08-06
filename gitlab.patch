@@ -1,0 +1,47 @@
+diff --git a/app/models/merge_request.rb b/app/models/merge_request.rb
+index 1ef76d1..c14d3d0 100644
+--- a/app/models/merge_request.rb
++++ b/app/models/merge_request.rb
+@@ -212,6 +212,8 @@ class MergeRequest < ActiveRecord::Base
+         project.repository.can_be_merged?(source_branch, target_branch)
+       end
+
++    can_be_merged &&= passes_gitlab_ci
++
+     if can_be_merged
+       mark_as_mergeable
+     else
+@@ -219,6 +221,13 @@ class MergeRequest < ActiveRecord::Base
+     end
+   end
+
++  def passes_gitlab_ci
++    return true unless project.gitlab_ci?
++
++    source_sha = commits.first.sha
++    project.gitlab_ci_service.commit_status(source_sha, source_branch) == 'success'
++  end
++
+   def merge_event
+     self.target_project.events.where(target_id: self.id, target_type: "MergeRequest", action: Event::MERGED).last
+   end
+diff --git a/app/views/projects/merge_requests/widget/_open.html.haml b/app/views/projects/merge_requests/widget/_open.html.haml
+index bb79491..c841d99 100644
+--- a/app/views/projects/merge_requests/widget/_open.html.haml
++++ b/app/views/projects/merge_requests/widget/_open.html.haml
+@@ -9,6 +9,8 @@
+       = render 'projects/merge_requests/widget/open/nothing'
+     - elsif @merge_request.branch_missing?
+       = render 'projects/merge_requests/widget/open/missing_branch'
++    - elsif !@merge_request.passes_gitlab_ci
++      = render 'projects/merge_requests/widget/open/gitlab_ci_not_passed'
+     - elsif @merge_request.unchecked?
+       = render 'projects/merge_requests/widget/open/check'
+     - elsif @merge_request.cannot_be_merged?
+diff --git a/app/views/projects/merge_requests/widget/open/_gitlab_ci_not_passed.html.haml b/app/views/projects/merge_requests/widget/open/_gitlab_ci_not_passed.html.haml
+new file mode 100644
+index 0000000..7147bdf
+--- /dev/null
++++ b/app/views/projects/merge_requests/widget/open/_gitlab_ci_not_passed.html.haml
+@@ -0,0 +1 @@
++%strong CI build pending or failed. You cannot merge this merge request unless it will succeed.
